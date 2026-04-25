@@ -13,11 +13,13 @@ import Analytics from './components/Analytics'
 import Categories from './components/Categories'
 import Profile from './components/Profile'
 import ProtectedRoute from './components/ProtectedRoute'
+import NotFoundPage from './components/NotFoundPage'
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="*" element={<NotFoundPage />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/signin" element={<SignInPage />} />
