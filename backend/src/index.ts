@@ -21,3 +21,8 @@ app.get('/health', (_, res) => res.json({ status: 'ok' }))
 app.listen(PORT, () => {
   console.log(`Backend bezi na http://localhost:${PORT}`)
 })
+
+app.use((req, _res, next) => {
+  console.log(`${req.method} ${req.url}`)
+  next()
+})
