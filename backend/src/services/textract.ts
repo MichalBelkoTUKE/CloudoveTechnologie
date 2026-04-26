@@ -24,6 +24,8 @@ export interface ExtractedReceiptData {
   rawText: string
 }
 
+const SKIP_WORDS = ['medzisucet', 'ziava', 'zlava', 'zľava', 'discount', 'subtotal']
+
 export async function analyzeReceiptWithTextract(imageBuffer: Buffer): Promise<ExtractedReceiptData> {
   const command = new AnalyzeExpenseCommand({ Document: { Bytes: imageBuffer } })
   const response = await textractClient.send(command)
@@ -42,7 +44,7 @@ export async function analyzeReceiptWithTextract(imageBuffer: Buffer): Promise<E
     rawTextParts.push(value)
     switch (type) {
       case 'NAME': case 'VENDOR_NAME': merchantName = value; break
-      case 'TOTAL': case 'AMOUNT_PAID': totalAmount = parseFloat(value.replace(/[^0-9.]/g, '')); break
+      case 'TOTAL': case 'AMOUNT_PAID': totalAmount = parseFloat(value.replace(',', '.').replace(/[^0-9.]/g, '')); break
       case 'INVOICE_RECEIPT_DATE': date = value; break
       case 'CURRENCY': currency = value; break
     }
@@ -60,16 +62,43 @@ export async function analyzeReceiptWithTextract(imageBuffer: Buffer): Promise<E
         const value = field.ValueDetection?.Text
         if (!value) continue
         rawTextParts.push(value)
+
         switch (type) {
-          case 'ITEM': itemName = value; break
+          case 'ITEM': {
+            const qtyMatch = value.match(/(\d+)\s*ks\s*$/i)
+            if (qtyMatch && !itemQty) {
+              itemQty = parseInt(qtyMatch[1])
+            }
+            itemName = value.replace(/\s+\d+\s*ks\s*$/i, '').trim()
+            break
+          }
           case 'QUANTITY': itemQty = parseFloat(value); break
-          case 'UNIT_PRICE': itemUnitPrice = parseFloat(value.replace(/[^0-9.]/g, '')); break
-          case 'PRICE': itemTotal = parseFloat(value.replace(/[^0-9.]/g, '')); break
+          case 'UNIT_PRICE': itemUnitPrice = parseFloat(value.replace(',', '.').replace(/[^0-9.]/g, '')); break
+          case 'PRICE': itemTotal = parseFloat(value.replace(',', '.').replace(/[^0-9.]/g, '')); break
         }
       }
-      if (itemName) items.push({ name: itemName, quantity: itemQty, unitPrice: itemUnitPrice, totalPrice: itemTotal })
+
+      const shouldSkip = itemName
+        ? SKIP_WORDS.some(word => itemName!.toLowerCase().includes(word))
+        : false
+
+      if (itemName && !shouldSkip) {
+        items.push({
+          name: itemName,
+          quantity: itemQty,
+          unitPrice: itemUnitPrice,
+          totalPrice: itemTotal
+        })
+      }
     }
   }
 
-  return { merchantName, totalAmount, currency: currency ?? 'EUR', date, items, rawText: rawTextParts.join(' ') }
+  return {
+    merchantName,
+    totalAmount,
+    currency: currency ?? 'EUR',
+    date,
+    items,
+    rawText: rawTextParts.join(' ')
+  }
 }

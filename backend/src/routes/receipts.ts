@@ -36,9 +36,12 @@ router.post('/upload', upload.single('receipt'), async (req: Request, res: Respo
       .insert({ user_id: userId, image_url: urlData.publicUrl, status: 'processing' })
       .select()
       .single()
+      console.log('Receipt created:', receipt.id)
     if (insertError) throw insertError
 
     const extracted = await analyzeReceiptWithTextract(file.buffer)
+    console.log('Extracted:', JSON.stringify(extracted, null, 2))
+
 
     await supabase.from('receipts').update({
       merchant_name: extracted.merchantName,
@@ -64,7 +67,6 @@ router.post('/upload', upload.single('receipt'), async (req: Request, res: Respo
 
     res.status(201).json({ success: true, receiptId: receipt.id, extracted })
   } catch (err) {
-    console.error('Upload error:', err)
     res.status(500).json({ error: 'Chyba pri spracovaní bločku' })
   }
 })
@@ -106,6 +108,46 @@ router.patch('/:id', async (req: Request, res: Response) => {
     .single()
   if (error) { res.status(500).json({ error: error.message }); return }
   res.json(data)
+})
+
+router.post('/rescan', upload.single('receipt'), async (req: Request, res: Response) => {
+  try {
+    const file = req.file
+    const userId = req.headers['x-user-id'] as string
+    const receiptId = req.body.receiptId
+
+    if (!file) { res.status(400).json({ error: 'Súbor nebol nahraný' }); return }
+    if (!userId || !receiptId) { res.status(401).json({ error: 'Neautorizovaný' }); return }
+
+    const extracted = await analyzeReceiptWithTextract(file.buffer)
+
+    await supabase.from('receipts').update({
+      merchant_name: extracted.merchantName,
+      total_amount: extracted.totalAmount,
+      currency: extracted.currency,
+      receipt_date: extracted.date,
+      raw_text: extracted.rawText,
+      extracted_data: extracted,
+      status: 'done'
+    }).eq('id', receiptId).eq('user_id', userId)
+
+    if (extracted.items.length > 0) {
+      await supabase.from('receipt_items').insert(
+        extracted.items.map(item => ({
+          receipt_id: receiptId,
+          name: item.name,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          total_price: item.totalPrice
+        }))
+      )
+    }
+
+    res.json({ success: true, extracted })
+  } catch (err) {
+    console.error('Rescan error:', err)
+    res.status(500).json({ error: 'Chyba pri rescanovaní' })
+  }
 })
 
 export default router

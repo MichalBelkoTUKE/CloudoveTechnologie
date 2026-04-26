@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate } from 'react-router'
-import { ArrowLeft, Edit, Trash2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, RotateCcw, ChevronDown, ChevronUp, Save, X } from 'lucide-react'
 import { supabase } from '../../src/lib/supabase'
 
 interface ReceiptItem {
@@ -31,31 +31,100 @@ export default function ReceiptDetail() {
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [loading, setLoading] = useState(true)
   const [showRawText, setShowRawText] = useState(false)
+
+  // Edit mode
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editTotal, setEditTotal] = useState('')
+  const [editCurrency, setEditCurrency] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Delete modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+  // Re-scan
+  const [rescanning, setRescanning] = useState(false)
 
-      const { data } = await supabase
-        .from('receipts')
-        .select('*, receipt_items(*)')
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .single()
+  async function load() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data } = await supabase
+      .from('receipts')
+      .select('*, receipt_items(*)')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
+    setReceipt(data)
+    setLoading(false)
+  }
 
-      setReceipt(data)
-      setLoading(false)
-    }
+  useEffect(() => { load() }, [id])
+
+  const handleEdit = () => {
+    if (!receipt) return
+    setEditName(receipt.merchant_name ?? '')
+    setEditDate(receipt.receipt_date ?? '')
+    setEditTotal(receipt.total_amount?.toString() ?? '')
+    setEditCurrency(receipt.currency ?? 'EUR')
+    setEditing(true)
+  }
+
+  const handleSave = async () => {
+    if (!receipt) return
+    setSaving(true)
+    await supabase.from('receipts').update({
+      merchant_name: editName,
+      receipt_date: editDate || null,
+      total_amount: parseFloat(editTotal) || null,
+      currency: editCurrency,
+    }).eq('id', receipt.id)
+    setSaving(false)
+    setEditing(false)
     load()
-  }, [id])
+  }
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this receipt?')) return
     setDeleting(true)
+    await supabase.from('receipt_items').delete().eq('receipt_id', id)
     await supabase.from('receipts').delete().eq('id', id)
     navigate('/dashboard/receipts')
+  }
+
+  const handleRescan = async () => {
+    if (!receipt?.image_url) return
+    setRescanning(true)
+
+    // Stiahni obrázok a pošli znova na backend
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Nastav status na processing
+    await supabase.from('receipts').update({ status: 'processing' }).eq('id', id)
+
+    // Vymaž staré položky
+    await supabase.from('receipt_items').delete().eq('receipt_id', id)
+
+    // Stiahni obrázok zo Storage
+    const imageResponse = await fetch(receipt.image_url)
+    const imageBlob = await imageResponse.blob()
+    const imageFile = new File([imageBlob], 'receipt.jpg', { type: imageBlob.type })
+
+    // Pošli na rescan endpoint
+    const formData = new FormData()
+    formData.append('receipt', imageFile)
+    formData.append('receiptId', id!)
+
+    const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
+    await fetch(`${apiUrl}/api/receipts/rescan`, {
+      method: 'POST',
+      headers: { 'x-user-id': user.id },
+      body: formData
+    })
+
+    setRescanning(false)
+    load()
   }
 
   if (loading) {
@@ -104,21 +173,41 @@ export default function ReceiptDetail() {
             <div className="space-y-4">
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-600">Store</span>
-                <span className="font-medium text-gray-800">{receipt.merchant_name ?? '—'}</span>
+                {editing ? (
+                  <input value={editName} onChange={e => setEditName(e.target.value)}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm w-48 outline-none focus:ring-2 focus:ring-blue-500" />
+                ) : (
+                  <span className="font-medium text-gray-800">{receipt.merchant_name ?? '—'}</span>
+                )}
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-600">Date</span>
-                <span className="font-medium text-gray-800">{receipt.receipt_date ?? '—'}</span>
+                {editing ? (
+                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                ) : (
+                  <span className="font-medium text-gray-800">{receipt.receipt_date ?? '—'}</span>
+                )}
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-600">Total</span>
-                <span className="font-medium text-gray-800">
-                  {receipt.total_amount ? `${receipt.total_amount.toFixed(2)} ${receipt.currency ?? '€'}` : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between py-2 border-b border-gray-100">
-                <span className="text-gray-600">Currency</span>
-                <span className="font-medium text-gray-800">{receipt.currency ?? '—'}</span>
+                {editing ? (
+                  <div className="flex gap-2">
+                    <input type="number" step="0.01" value={editTotal} onChange={e => setEditTotal(e.target.value)}
+                      className="px-2 py-1 border border-gray-300 rounded text-sm w-24 outline-none focus:ring-2 focus:ring-blue-500" />
+                    <select value={editCurrency} onChange={e => setEditCurrency(e.target.value)}
+                      className="px-2 py-1 border border-gray-300 rounded text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                      <option>EUR</option>
+                      <option>USD</option>
+                      <option>GBP</option>
+                      <option>CZK</option>
+                    </select>
+                  </div>
+                ) : (
+                  <span className="font-medium text-gray-800">
+                    {receipt.total_amount ? `${receipt.total_amount.toFixed(2)} ${receipt.currency ?? '€'}` : '—'}
+                  </span>
+                )}
               </div>
               <div className="flex justify-between py-2 border-b border-gray-100">
                 <span className="text-gray-600">Status</span>
@@ -131,11 +220,9 @@ export default function ReceiptDetail() {
                   {receipt.status}
                 </span>
               </div>
-              <div className="flex justify-between py-2 border-b border-gray-100">
+              <div className="flex justify-between py-2">
                 <span className="text-gray-600">Created at</span>
-                <span className="text-sm text-gray-800">
-                  {new Date(receipt.created_at).toLocaleString()}
-                </span>
+                <span className="text-sm text-gray-800">{new Date(receipt.created_at).toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -174,10 +261,8 @@ export default function ReceiptDetail() {
 
           {receipt.raw_text && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <button
-                onClick={() => setShowRawText(!showRawText)}
-                className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-              >
+              <button onClick={() => setShowRawText(!showRawText)}
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                 <span className="font-semibold text-gray-800">Raw OCR Text</span>
                 {showRawText ? <ChevronUp className="w-5 h-5 text-gray-600" /> : <ChevronDown className="w-5 h-5 text-gray-600" />}
               </button>
@@ -190,25 +275,71 @@ export default function ReceiptDetail() {
           )}
 
           <div className="flex gap-4">
-            <button className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-violet-600 text-white rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2">
-              <Edit className="w-4 h-4" />
-              Edit
-            </button>
-            <button className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2">
-              <RotateCcw className="w-4 h-4" />
-              Re-scan
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="px-6 py-3 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              <Trash2 className="w-4 h-4" />
-              {deleting ? 'Deleting...' : 'Delete'}
-            </button>
+            {editing ? (
+              <>
+                <button onClick={async () => { await handleSave(); navigate('/dashboard/analytics') }} disabled={saving}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-violet-600 text-white rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button onClick={() => setEditing(false)}
+                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2">
+                  <X className="w-4 h-4" />
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+              <button onClick={handleEdit}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-violet-600 text-white rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2">
+                <Edit className="w-4 h-4" />
+                Edit
+              </button>
+              <button onClick={() => navigate('/dashboard/analytics')}
+                className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2">
+                <Save className="w-4 h-4" />
+                Save
+              </button>
+                <button onClick={handleRescan} disabled={rescanning}
+                  className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50">
+                  <RotateCcw className={`w-4 h-4 ${rescanning ? 'animate-spin' : ''}`} />
+                  {rescanning ? 'Scanning...' : 'Re-scan'}
+                </button>
+                <button onClick={() => setShowDeleteModal(true)}
+                  className="px-6 py-3 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Delete Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mx-auto mb-4">
+              <Trash2 className="w-8 h-8 text-red-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 text-center mb-2">Delete receipt?</h2>
+            <p className="text-gray-600 text-center mb-6">
+              This will permanently delete the receipt and all its items. This action cannot be undone.
+            </p>
+            <div className="flex gap-4">
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50">
+                {deleting ? 'Deleting...' : 'Yes, delete'}
+              </button>
+              <button onClick={() => setShowDeleteModal(false)}
+                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
