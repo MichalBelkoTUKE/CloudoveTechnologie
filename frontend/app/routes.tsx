@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router";
 import LandingPage from "./components/LandingPage";
 import SignUpPage from "./components/SignUpPage";
 import SignInPage from "./components/SignInPage";
+import ProtectedRoute from "./components/ProtectedRoute";
 import DashboardLayout from "./components/DashboardLayout";
 import Dashboard from "./components/Dashboard";
 import UploadReceipt from "./components/UploadReceipt";
@@ -27,18 +28,23 @@ export const router = createBrowserRouter([
     Component: SignInPage,
   },
   {
-    path: "/dashboard",
-    Component: DashboardLayout,
+    Component: ProtectedRoute,
     children: [
-      { index: true, Component: Dashboard },
-      { path: "upload", Component: UploadReceipt },
-      { path: "processing", Component: ProcessingScreen },
-      { path: "review", Component: ReviewExtractedData },
-      { path: "receipts", Component: ReceiptsHistory },
-      { path: "receipts/:id", Component: ReceiptDetail },
-      { path: "analytics", Component: Analytics },
-      { path: "categories", Component: Categories },
-      { path: "profile", Component: Profile },
+      {
+        path: "/dashboard",
+        Component: DashboardLayout,
+        children: [
+          { index: true, Component: Dashboard },
+          { path: "upload", Component: UploadReceipt },
+          { path: "processing", Component: ProcessingScreen },
+          { path: "review", Component: ReviewExtractedData },
+          { path: "receipts", Component: ReceiptsHistory },
+          { path: "receipts/:id", Component: ReceiptDetail },
+          { path: "analytics", Component: Analytics },
+          { path: "categories", Component: Categories },
+          { path: "profile", Component: Profile },
+        ],
+      },
     ],
   },
 ]);
