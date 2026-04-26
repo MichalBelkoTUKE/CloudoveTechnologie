@@ -18,6 +18,7 @@ export default function ProcessingScreen() {
 
   // receiptId môže prísť cez navigate state
   const receiptId = location.state?.receiptId as string | undefined
+  console.log('receiptId:', receiptId)
 
   useEffect(() => {
     if (!receiptId) {
@@ -42,20 +43,24 @@ export default function ProcessingScreen() {
       }
     }, 1200)
 
-    const pollInterval = setInterval(async () => {
-      const { data } = await supabase
-        .from('receipts')
-        .select('status')
-        .eq('id', receiptId)
-        .single()
+  const pollInterval = setInterval(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    const { data, error: pollError } = await supabase
+      .from('receipts')
+      .select('status')
+      .eq('id', receiptId)
+      .maybeSingle()
 
-      if (data?.status === 'done' || data?.status === 'error') {
-        clearInterval(pollInterval)
-        clearInterval(stepInterval)
-        setCurrentStep(steps.length - 1)
-        setTimeout(() => navigate(`/dashboard/receipts/${receiptId}`), 1000)
-      }
-    }, 2000)
+    console.log('Poll result:', data, pollError, 'session:', !!session)
+
+    if (data?.status === 'done' || data?.status === 'error') {
+      clearInterval(pollInterval)
+      clearInterval(stepInterval)
+      setCurrentStep(steps.length - 1)
+      setTimeout(() => navigate(`/dashboard/receipts/${receiptId}`), 1000)
+    }
+  }, 2000)
 
     return () => {
       clearInterval(stepInterval)

@@ -83,11 +83,6 @@ export default function SignInPage() {
                 Create account
               </Link>
             </p>
-            <div className="text-center mt-2">
-            <Link to="/forgot-password" className="text-sm text-gray-500 hover:text-blue-600">
-            Forgot password?
-            </Link>
-            </div>
           </div>
           
         </div>

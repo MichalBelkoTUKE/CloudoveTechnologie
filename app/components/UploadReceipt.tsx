@@ -17,25 +17,32 @@ export default function UploadReceipt() {
     }
   }
 
-  const handleUpload = async () => {
-    if (!selectedFile) return
-    setLoading(true)
-    setError('')
+const handleUpload = async () => {
+  if (!selectedFile) return
+  setLoading(true)
+  setError('')
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        navigate('/signin')
-        return
-      }
-
-      const result = await uploadReceipt(selectedFile, user.id)
-      navigate('/dashboard/processing', { state: { receiptId: result.receiptId } })
-    } catch (err) {
-      setError('Chyba pri nahrávaní. Skús znova.')
-      setLoading(false)
+  try {
+    console.log('1. Starting upload...')
+    const { data: { user } } = await supabase.auth.getUser()
+    console.log('2. User:', user?.id)
+    
+    if (!user) {
+      navigate('/signin')
+      return
     }
+
+    console.log('3. Calling uploadReceipt...')
+    console.log('4. API URL:', import.meta.env.VITE_API_URL)
+    const result = await uploadReceipt(selectedFile, user.id)
+    console.log('5. Result:', result)
+    navigate('/dashboard/processing', { state: { receiptId: result.receiptId } })
+  } catch (err) {
+    console.error('Upload error:', err)
+    setError('Chyba pri nahrávaní. Skús znova.')
+    setLoading(false)
   }
+}
 
   return (
     <div>
