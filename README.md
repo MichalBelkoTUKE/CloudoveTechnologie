@@ -290,11 +290,7 @@ FRONTEND_URL=http://localhost:5173
 ```env
 # URL backendu (voliteľné, predvolená hodnota: http://localhost:3001)
 VITE_API_URL=http://localhost:3001
-```
 
-> **Dôležité:** Nikdy necommituj `.env` súbory do Gitu. Pridaj ich do `.gitignore`.
-
----
 
 ## API dokumentácia
 
@@ -461,4 +457,3 @@ Backend je možné nasadiť na akúkoľvek platformu podporujúcu Docker (Azure 
 - CORS je nakonfigurovaný tak, aby akceptoval požiadavky len z povolenej adresy frontendu
 - Používatelia majú prístup len k vlastným bločkom a kategóriám (row-level isolation cez `user_id`)
 
-> **Upozornenie:** Nikdy necommituj skutočné hodnoty `SUPABASE_SERVICE_KEY`, `AWS_ACCESS_KEY_ID` ani `AWS_SECRET_ACCESS_KEY` do repozitára. Používaj `.env` súbory lokálne a secrets manažér pri nasadení.
