@@ -1,6 +1,7 @@
 # SmartReceipt AI
 
 > Moderná cloudová aplikácia na skenovanie bločkov a automatickú kategorizáciu výdavkov pomocou umelej inteligencie.
+Live verzia dostupná na https://smartreceiptfront.z28.web.core.windows.net/
 
 ---
 
